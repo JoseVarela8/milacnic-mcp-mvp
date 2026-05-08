@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MCP MiLACNIC MVP Chat</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f6f8fb;
+      color: #1f2937;
+    }
+
+    main {
+      width: min(920px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0;
+    }
+
+    .topbar {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    #messages {
+      min-height: 420px;
+      max-height: 65vh;
+      overflow-y: auto;
+      background: #ffffff;
+      border: 1px solid #d7dce3;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .message {
+      margin-bottom: 16px;
+    }
+
+    .role {
+      color: #566173;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .bubble {
+      background: #eef3f8;
+      border-radius: 8px;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+    }
+
+    .assistant .bubble {
+      background: #e7f3ee;
+    }
+
+    pre {
+      background: #111827;
+      border-radius: 8px;
+      color: #e5e7eb;
+      font-size: 12px;
+      margin: 8px 0 0;
+      max-height: 280px;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    form {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    input {
+      border: 1px solid #c7ced8;
+      border-radius: 8px;
+      flex: 1;
+      font-size: 15px;
+      min-width: 0;
+      padding: 10px 12px;
+    }
+
+    button {
+      background: #135c85;
+      border: 0;
+      border-radius: 8px;
+      color: #ffffff;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 10px 16px;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    .secondary {
+      background: #e5eaf0;
+      color: #1f2937;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="topbar">
+      <h1>MCP MiLACNIC MVP Chat</h1>
+      <button class="secondary" id="resetButton" type="button">Nuevo chat</button>
+    </div>
+    <section id="messages" aria-live="polite"></section>
+    <form id="chatForm">
+      <input
+        id="messageInput"
+        autocomplete="off"
+        placeholder="Mostrame los recursos de la organización UY-LACN-LACNIC"
+      />
+      <button id="sendButton" type="submit">Enviar</button>
+    </form>
+  </main>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("messageInput");
+    const button = document.getElementById("sendButton");
+    const resetButton = document.getElementById("resetButton");
+    let conversationId = window.localStorage.getItem("milacnicMcpConversationId");
+
+    resetButton.addEventListener("click", () => {
+      conversationId = null;
+      window.localStorage.removeItem("milacnicMcpConversationId");
+      messages.innerHTML = "";
+      input.focus();
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const text = input.value.trim();
+
+      if (!text) return;
+
+      appendMessage("Usuario", text, "user");
+      input.value = "";
+      button.disabled = true;
+
+      try {
+        const response = await fetch("http://localhost:3000/mcp/chat/message", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            conversationId,
+            message: text,
+            locale: "es"
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.conversationId) {
+          conversationId = data.conversationId;
+          window.localStorage.setItem("milacnicMcpConversationId", conversationId);
+        }
+
+        appendMessage("Asistente", data.message, "assistant", data.data);
+      } catch (error) {
+        appendMessage(
+          "Asistente",
+          "No pude comunicarme con el servidor MCP.",
+          "assistant"
+        );
+      } finally {
+        button.disabled = false;
+        input.focus();
+      }
+    });
+
+    function appendMessage(role, text, className, data) {
+      const wrapper = document.createElement("article");
+      wrapper.className = `message ${className}`;
+
+      const roleElement = document.createElement("div");
+      roleElement.className = "role";
+      roleElement.textContent = role;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+
+      wrapper.append(roleElement, bubble);
+
+      if (data !== undefined) {
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(data, null, 2);
+        wrapper.appendChild(pre);
+      }
+
+      messages.appendChild(wrapper);
+      messages.scrollTop = messages.scrollHeight;
+    }
+  </script>
+</body>
+</html>
