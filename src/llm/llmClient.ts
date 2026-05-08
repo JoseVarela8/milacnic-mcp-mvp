@@ -20,6 +20,7 @@ export interface LlmIntentResult {
   entities: {
     asn?: string;
     contactId?: string;
+    contactRole?: "admin" | "billing" | "membership" | "all";
     orgId?: string;
     resource?: string;
     resourceType?: "all" | "asn" | "ip" | "ipv4" | "ipv6";
@@ -90,7 +91,7 @@ async function detectIntentWithLlm(
               "Devolvé únicamente JSON válido con esta forma exacta: {\"intent\":\"...\",\"entities\":{},\"confidence\":0.0,\"missingFields\":[],\"clarificationQuestion\":\"\",\"referencedPreviousContext\":false,\"isWriteAttempt\":false}.",
               "No inventes entidades. No pidas ni uses credenciales.",
               "Usá solamente estas intenciones exactas: get_contact, get_geofeeds_by_org, get_irr_assets, get_organization, get_organization_contacts, get_organization_resources, get_rate_limits, get_resource_detail, get_roas_by_org, get_subassignments_by_org, get_subassignments_by_resource, unsupported_write_action, unknown.",
-              "Usá solamente estas entidades exactas: asn, contactId, orgId, resource, resourceType, subassignmentView.",
+              "Usá solamente estas entidades exactas: asn, contactId, contactRole, orgId, resource, resourceType, subassignmentView.",
               "Usá el contexto conversacional solo para resolver referencias como 'esa organización', 'ese recurso', 'los anteriores', 'también', 'y los ROAs'.",
               "Si el usuario dice 'otra organización', 'otro recurso' o equivalente y no da un nuevo identificador, no uses el contexto anterior; pedí aclaración.",
               "Si falta un campo obligatorio, agregalo a missingFields y redactá clarificationQuestion.",
@@ -100,7 +101,12 @@ async function detectIntentWithLlm(
               "Si el usuario pide solo IPv6, usá get_organization_resources con resourceType 'ipv6'.",
               "Si el usuario pregunta qué ASN o AS tiene una organización, usá get_organization_resources con resourceType 'asn'.",
               "Si el usuario pide contactos de una organización, usá get_organization_contacts.",
+              "Si pide contacto administrativo, seteá contactRole='admin'. Si pide facturación/cobranza, seteá contactRole='billing'. Si pide membresía, seteá contactRole='membership'.",
               "Si el usuario pide datos de una organización, usá get_organization.",
+              "Si el usuario pide Geofeeds de una organización, usá get_geofeeds_by_org.",
+              "Si pide Geofeeds de un recurso, extraé el CIDR en entities.resource. Si pide Geofeeds IPv4 o IPv6, seteá resourceType.",
+              "Si el usuario pide IRR, AS-SET, aut-num o asset routing, usá get_irr_assets. Si menciona un ASN o AS-SET específico, extraelo en asn o resource.",
+              "Si el usuario pide límites, cuotas, cupos, rate limits o throttling de API, usá get_rate_limits.",
               "Si el usuario pide ROAs o RPKI de una organización, usá get_roas_by_org.",
               "Si el usuario pide ROAs de un ASN, usá get_roas_by_org y extraé el ASN en entities.asn sin prefijo AS.",
               "Si el usuario pide ROAs de un prefix o prefijo, usá get_roas_by_org y extraé el CIDR en entities.resource.",
@@ -110,11 +116,14 @@ async function detectIntentWithLlm(
               "Para subasignaciones por organización, si pide recursos con subasignaciones, seteá subassignmentView='with_subassignments'.",
               "Para subasignaciones por organización, si pide recursos sin subasignaciones, seteá subassignmentView='without_subassignments'.",
               "Para subasignaciones por organización, si pide cobertura, diagnóstico, estado o resumen, seteá subassignmentView='coverage'.",
-              "Si el usuario pide crear, registrar, modificar, borrar o eliminar, usá unsupported_write_action.",
+              "Si el usuario pide crear, registrar, modificar, actualizar, cambiar, borrar, eliminar, publicar, activar, desactivar, revocar, delegar, transferir o configurar datos en Registro/MiLACNIC, usá unsupported_write_action.",
               "Ejemplo: mensaje 'Mostrame los recursos de la organización UY-LACN-LACNIC' => {\"intent\":\"get_organization_resources\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\"},\"confidence\":0.95,\"missingFields\":[],\"referencedPreviousContext\":false,\"isWriteAttempt\":false}.",
               "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'solo IPv4' => {\"intent\":\"get_organization_resources\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"resourceType\":\"ipv4\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
               "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'qué ASN tiene?' => {\"intent\":\"get_organization_resources\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"resourceType\":\"asn\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
               "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'qué bloques tiene?' => {\"intent\":\"get_organization_resources\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"resourceType\":\"ip\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
+              "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'contacto administrativo' => {\"intent\":\"get_organization_contacts\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"contactRole\":\"admin\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
+              "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'geofeeds IPv6' => {\"intent\":\"get_geofeeds_by_org\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"resourceType\":\"ipv6\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
+              "Ejemplo: mensaje 'AS-SET de AS28001 en IRR' => {\"intent\":\"get_irr_assets\",\"entities\":{\"asn\":\"28001\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":false,\"isWriteAttempt\":false}.",
               "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'y los ROAs?' => {\"intent\":\"get_roas_by_org\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\"},\"confidence\":0.9,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
               "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'ROAs que involucren el ASN 28001' => {\"intent\":\"get_roas_by_org\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"asn\":\"28001\"},\"confidence\":0.95,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
               "Ejemplo: contexto {\"lastOrgId\":\"UY-LACN-LACNIC\"}, mensaje 'ROAs del prefijo 200.3.13.0/24' => {\"intent\":\"get_roas_by_org\",\"entities\":{\"orgId\":\"UY-LACN-LACNIC\",\"resource\":\"200.3.13.0/24\"},\"confidence\":0.95,\"missingFields\":[],\"referencedPreviousContext\":true,\"isWriteAttempt\":false}.",
@@ -228,6 +237,11 @@ function normalizeIntent(value: unknown): LlmIntentResult {
         typeof result.entities?.contactId === "string"
           ? result.entities.contactId
           : undefined,
+      contactRole: normalizeContactRole(
+        (result.entities as { contactRole?: unknown; role?: unknown } | undefined)
+          ?.contactRole ??
+          (result.entities as { role?: unknown } | undefined)?.role
+      ),
       orgId:
         typeof result.entities?.orgId === "string"
           ? result.entities.orgId
@@ -365,6 +379,52 @@ function normalizeSubassignmentView(value: unknown) {
     normalized === "estado"
   ) {
     return "coverage" as const;
+  }
+
+  return undefined;
+}
+
+function normalizeContactRole(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (
+    normalized === "all" ||
+    normalized === "todos" ||
+    normalized === "todas"
+  ) {
+    return "all" as const;
+  }
+
+  if (
+    normalized === "admin" ||
+    normalized === "administrativo" ||
+    normalized === "administrativa" ||
+    normalized === "administrador"
+  ) {
+    return "admin" as const;
+  }
+
+  if (
+    normalized === "billing" ||
+    normalized === "facturacion" ||
+    normalized === "facturación" ||
+    normalized === "cobranza" ||
+    normalized === "cob"
+  ) {
+    return "billing" as const;
+  }
+
+  if (
+    normalized === "membership" ||
+    normalized === "membresia" ||
+    normalized === "membresía" ||
+    normalized === "mem"
+  ) {
+    return "membership" as const;
   }
 
   return undefined;
@@ -558,6 +618,7 @@ function detectIntentWithRules(
   const contextResource = shouldReuseContext ? context.lastResource : undefined;
   const resourceType = detectResourceType(lower);
   const subassignmentView = detectSubassignmentView(lower);
+  const contactRole = detectContactRole(lower);
 
   const orgIdMatch = message.match(/[A-Z]{2}-[A-Z0-9]+-LACNIC/i);
   const contactIdMatch = message.match(
@@ -568,20 +629,15 @@ function detectIntentWithRules(
   );
   const asnMatch = message.match(/\b(?:ASN|AS)?\s?(\d{1,10})\b/i);
   const explicitAsnMatch = message.match(/\b(?:ASN|AS)\s?(\d{1,10})\b/i);
+  const asSetMatch = message.match(/\bAS-[A-Z0-9_-]+\b/i);
 
-  if (
-    lower.includes("registrá") ||
-    lower.includes("registra ") ||
-    lower.includes("registrar ") ||
-    lower.includes("crear") ||
-    lower.includes("modificar") ||
-    lower.includes("eliminar") ||
-    lower.includes("borrar")
-  ) {
+  if (isWriteAttempt(lower)) {
     return {
       intent: "unsupported_write_action",
       entities: {
-        orgId: orgIdMatch?.[0] ?? contextOrgId
+        asn: explicitAsnMatch?.[1],
+        orgId: orgIdMatch?.[0] ?? contextOrgId,
+        resource: cidrMatch?.[0]
       },
       confidence: 0.95,
       isWriteAttempt: true
@@ -593,7 +649,8 @@ function detectIntentWithRules(
       intent: "get_geofeeds_by_org",
       entities: {
         orgId: orgIdMatch?.[0] ?? contextOrgId,
-        resource: cidrMatch?.[0] ?? contextResource
+        resource: cidrMatch?.[0] ?? contextResource,
+        resourceType
       },
       confidence: 0.88,
       referencedPreviousContext: Boolean(!orgIdMatch && contextOrgId)
@@ -603,7 +660,10 @@ function detectIntentWithRules(
   if (lower.includes("as-set") || lower.includes("asset") || lower.includes("irr")) {
     return {
       intent: "get_irr_assets",
-      entities: {},
+      entities: {
+        asn: explicitAsnMatch?.[1],
+        resource: asSetMatch?.[0]
+      },
       confidence: 0.85
     };
   }
@@ -612,7 +672,10 @@ function detectIntentWithRules(
     lower.includes("rate limit") ||
     lower.includes("ratelimit") ||
     lower.includes("límite") ||
-    lower.includes("limite")
+    lower.includes("limite") ||
+    lower.includes("cuota") ||
+    lower.includes("cupo") ||
+    lower.includes("thrott")
   ) {
     return {
       intent: "get_rate_limits",
@@ -628,7 +691,8 @@ function detectIntentWithRules(
     return {
       intent: "get_organization_contacts",
       entities: {
-        orgId: orgIdMatch?.[0] ?? contextOrgId
+        orgId: orgIdMatch?.[0] ?? contextOrgId,
+        contactRole
       },
       confidence: 0.85,
       referencedPreviousContext: Boolean(!orgIdMatch && contextOrgId)
@@ -864,4 +928,56 @@ function detectSubassignmentView(lowerMessage: string) {
   }
 
   return undefined;
+}
+
+function detectContactRole(lowerMessage: string) {
+  if (
+    lowerMessage.includes("administrativo") ||
+    lowerMessage.includes("administrativa") ||
+    lowerMessage.includes("admin")
+  ) {
+    return "admin" as const;
+  }
+
+  if (
+    lowerMessage.includes("facturación") ||
+    lowerMessage.includes("facturacion") ||
+    lowerMessage.includes("cobranza") ||
+    lowerMessage.includes("billing")
+  ) {
+    return "billing" as const;
+  }
+
+  if (
+    lowerMessage.includes("membresía") ||
+    lowerMessage.includes("membresia") ||
+    lowerMessage.includes("membership")
+  ) {
+    return "membership" as const;
+  }
+
+  return undefined;
+}
+
+function isWriteAttempt(lowerMessage: string) {
+  return [
+    "registrá",
+    "registra ",
+    "registrar ",
+    "crear",
+    "modificar",
+    "actualizar",
+    "cambiar",
+    "eliminar",
+    "borrar",
+    "publicar",
+    "activar",
+    "desactivar",
+    "revocar",
+    "delegar",
+    "transferir",
+    "configurar",
+    "alta ",
+    "baja "
+  ].some((keyword) => lowerMessage.includes(keyword));
 }

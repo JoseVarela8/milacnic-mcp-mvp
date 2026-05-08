@@ -56,5 +56,67 @@ export async function getIp(cidr: string) {
 export async function getSubassignmentsByResource(cidr: string) {
   const resource = await getIp(cidr);
 
-  return resource.ipnetwork_child ?? [];
+  const children = Array.isArray(resource.ipnetwork_child)
+    ? resource.ipnetwork_child
+    : [];
+
+  return Promise.all(
+    children.map(async (child: unknown) => {
+      const childCidr = getIpNetworkCidr(child);
+      const childRecord = isRecord(child) ? child : {};
+
+      if (!childCidr) {
+        return child;
+      }
+
+      try {
+        const childDetail = await getIp(childCidr);
+
+        return {
+          ...childRecord,
+          cidr: childCidr,
+          assignedOrgId: childDetail.orgId,
+          allocationType: childDetail.allocationType,
+          asn: childDetail.asn,
+          detail: {
+            abuseContact: childDetail.abuseContact,
+            techContact: childDetail.techContact,
+            ipnetwork_parent: childDetail.ipnetwork_parent
+          }
+        };
+      } catch (error) {
+        return {
+          ...childRecord,
+          cidr: childCidr,
+          detailLookupError:
+            error instanceof Error ? error.message : "Unknown detail lookup error"
+        };
+      }
+    })
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function getIpNetworkCidr(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const range = value.ipnetwork_range;
+
+  if (!isRecord(range)) {
+    return undefined;
+  }
+
+  const startAddress = range.start_address;
+  const prefixLength = range.prefixLength;
+
+  if (typeof startAddress !== "string" || typeof prefixLength !== "number") {
+    return undefined;
+  }
+
+  return `${startAddress}/${prefixLength}`;
 }

@@ -33,9 +33,14 @@ Archivo principal:
 - Filtro local de recursos por ASN.
 - Filtro local de recursos por bloques IP.
 - Diagnóstico de subasignaciones IPv4 sin ejecutar escrituras.
-- Reutilización de recurso previo para consultar subasignaciones.
+- Reutilización de recurso previo para consultar subasignaciones y detectar organización asignada del bloque hijo.
+- Filtro de contactos por rol administrativo.
+- Filtro local de Geofeeds por IPv6.
+- Filtro local de objetos IRR por ASN.
+- Interpretación de cuotas de API como rate limits.
 - Error 404 de API Registro transformado en respuesta controlada.
 - Acción de escritura bloqueada antes de llamar a Registro.
+- Acción de actualización bloqueada antes de llamar a Registro.
 - Verificación de que tokens y credenciales de Registro no se envían al LLM.
 - Verificación estática de que no hay `POST`, `PUT`, `PATCH` ni `DELETE` hacia Registro API, salvo OAuth en `auth.ts`.
 - Follow-up conversacional con `conversationId` para reutilizar OrgID previo.
@@ -61,6 +66,9 @@ Archivo principal:
 - El flujo de consulta por recurso responde con estado `COMPLETED`.
 - Las consultas de recursos pueden limitarse a IPv4, IPv6, ASN o bloques IP sin cambiar la llamada a Registro.
 - Las consultas de subasignaciones pueden hacerse por organización, por recurso o como diagnóstico de cobertura sin escrituras.
+- Cuando `ipnetwork_child` devuelve hijos, el MCP consulta cada hijo para enriquecerlo con `assignedOrgId`.
+- Las consultas de contactos pueden limitarse por rol cuando la API devuelve referencias de contacto.
+- Las consultas de Geofeeds e IRR pueden filtrarse localmente cuando el usuario indica familia IP, recurso, ASN o AS-SET.
 - Un recurso inexistente o error 404 de Registro responde con estado `ERROR` y mensaje controlado.
 - Una intención de escritura responde con estado `ACTION_BLOCKED`.
 - Un follow-up como `y los ROAs?` puede usar el OrgID previo de la conversación.

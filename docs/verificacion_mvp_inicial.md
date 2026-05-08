@@ -19,8 +19,8 @@ npm test
 Resultado:
 
 ```text
-tests 17
-pass 17
+tests 22
+pass 22
 fail 0
 ```
 
@@ -70,6 +70,10 @@ El MVP incluye memoria conversacional en memoria por `conversationId`.
 - El MCP filtra ROAs por ASN, prefix o combinación ASN + prefix localmente cuando el usuario lo pide.
 - El MCP filtra recursos por IPv4, IPv6, ASN o bloques IP localmente cuando el usuario lo pide.
 - El MCP consulta y diagnostica subasignaciones por organización o recurso en modo solo lectura.
+- El MCP puede enriquecer bloques subasignados consultando el detalle del hijo para obtener la organización asignada.
+- El MCP filtra contactos por rol, Geofeeds por familia IP/recurso e IRR por ASN/AS-SET en modo solo lectura.
+- El MCP interpreta rate limits, limites, cuotas y cupos como diagnostico de consumo de API.
+- El MCP bloquea mas verbos de escritura como actualizar, cambiar, publicar, activar, desactivar, revocar, delegar, transferir y configurar.
 - El MCP pide aclaracion si el usuario solicita otra organizacion u otro recurso sin dar identificador.
 - La documentacion especifica esta capa en `docs/mejoras_conversacionales.md`.
 
@@ -114,6 +118,7 @@ El MVP incluye memoria conversacional en memoria por `conversationId`.
 La seccion 23 del plan queda cubierta por:
 
 - `docs/write-enable-subassignments.md`
+- `docs/relevamiento_subasignaciones_api_registro.md`
 - `docs/write-enable-organizations.md`
 - `docs/write-enable-rpki.md`
 - `docs/write-enable-reverse-dns.md`

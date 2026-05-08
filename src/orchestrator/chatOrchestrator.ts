@@ -102,14 +102,14 @@ export async function handleChatMessage(
       return executeReadTool(conversationId, "get_geofeeds_by_org", async () => {
         const geofeeds = await getGeofeedsByOrganizationTool(orgId);
         const resource = intent.entities.resource;
-        const data = resource
-          ? geofeeds.filter((geofeed: { ip?: string }) => geofeed.ip === resource)
-          : geofeeds;
+        const resourceType = intent.entities.resourceType;
+        const data = filterGeofeeds(geofeeds, {
+          resource,
+          resourceType
+        });
 
         return {
-          message: resource
-            ? "Encontré los Geofeeds asociados al recurso."
-            : "Encontré los Geofeeds asociados a la organización.",
+          message: buildGeofeedsMessage({ resource, resourceType }),
           data
         };
       });
@@ -117,8 +117,14 @@ export async function handleChatMessage(
 
     case "get_irr_assets":
       return executeReadTool(conversationId, "get_irr_assets", async () => ({
-        message: "Encontré los AS-SETs disponibles en IRR.",
-        data: await getIrrAssetsTool()
+        message: buildIrrMessage({
+          asn: intent.entities.asn,
+          resource: intent.entities.resource
+        }),
+        data: filterIrrAssets(await getIrrAssetsTool(), {
+          asn: intent.entities.asn,
+          resource: intent.entities.resource
+        })
       }));
 
     case "get_organization": {
@@ -153,8 +159,11 @@ export async function handleChatMessage(
         conversationId,
         "get_organization_contacts",
         async () => ({
-          message: "Encontré los contactos asociados a la organización.",
-          data: await getOrganizationContactsTool(orgId)
+          message: buildContactsMessage(intent.entities.contactRole),
+          data: await getOrganizationContactsTool(
+            orgId,
+            intent.entities.contactRole
+          )
         })
       );
     }
@@ -350,6 +359,85 @@ function filterOrganizationResources(
   };
 }
 
+function filterGeofeeds(
+  geofeeds: unknown,
+  filters: {
+    resource?: string;
+    resourceType?: "all" | "asn" | "ip" | "ipv4" | "ipv6";
+  }
+) {
+  if (!Array.isArray(geofeeds)) {
+    return geofeeds;
+  }
+
+  return geofeeds.filter((geofeed) => {
+    if (filters.resource && !geofeedMatchesResource(geofeed, filters.resource)) {
+      return false;
+    }
+
+    if (
+      (filters.resourceType === "ipv4" || filters.resourceType === "ipv6") &&
+      !geofeedMatchesFamily(geofeed, filters.resourceType)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function filterIrrAssets(
+  assets: unknown,
+  filters: {
+    asn?: string;
+    resource?: string;
+  }
+) {
+  if (!Array.isArray(assets) || (!filters.asn && !filters.resource)) {
+    return assets;
+  }
+
+  return assets.filter((asset) => {
+    const candidates = collectPrimitiveCandidates(asset);
+
+    if (filters.asn) {
+      const normalizedAsn = normalizeAsn(filters.asn);
+      return candidates.some((candidate) =>
+        candidate.split(/\D+/).filter(Boolean).includes(normalizedAsn)
+      );
+    }
+
+    if (filters.resource) {
+      const normalizedResource = filters.resource.toLowerCase();
+      return candidates.some((candidate) =>
+        candidate.toLowerCase().includes(normalizedResource)
+      );
+    }
+
+    return true;
+  });
+}
+
+function geofeedMatchesResource(geofeed: unknown, resource: string) {
+  const normalizedResource = normalizePrefix(resource);
+
+  return collectPrefixCandidates(geofeed).some(
+    (candidate) => normalizePrefix(candidate) === normalizedResource
+  );
+}
+
+function geofeedMatchesFamily(
+  geofeed: unknown,
+  resourceType: "ipv4" | "ipv6"
+) {
+  return collectPrefixCandidates(geofeed).some((candidate) => {
+    const address = candidate.split("/")[0] ?? candidate;
+    const isIpv6 = address.includes(":");
+
+    return resourceType === "ipv6" ? isIpv6 : Boolean(address) && !isIpv6;
+  });
+}
+
 function ipRangeMatchesFamily(
   range: unknown,
   resourceType: "ipv4" | "ipv6"
@@ -386,6 +474,55 @@ function buildResourcesMessage(
   }
 
   return "Estos son los recursos asociados a la organización.";
+}
+
+function buildContactsMessage(
+  contactRole: "admin" | "billing" | "membership" | "all" | undefined
+) {
+  if (contactRole === "admin") {
+    return "Encontré el contacto administrativo de la organización.";
+  }
+
+  if (contactRole === "billing") {
+    return "Encontré el contacto de facturación de la organización.";
+  }
+
+  if (contactRole === "membership") {
+    return "Encontré el contacto de membresía de la organización.";
+  }
+
+  return "Encontré los contactos asociados a la organización.";
+}
+
+function buildGeofeedsMessage(filters: {
+  resource?: string;
+  resourceType?: "all" | "asn" | "ip" | "ipv4" | "ipv6";
+}) {
+  if (filters.resource) {
+    return "Encontré los Geofeeds asociados al recurso.";
+  }
+
+  if (filters.resourceType === "ipv4") {
+    return "Encontré los Geofeeds IPv4 asociados a la organización.";
+  }
+
+  if (filters.resourceType === "ipv6") {
+    return "Encontré los Geofeeds IPv6 asociados a la organización.";
+  }
+
+  return "Encontré los Geofeeds asociados a la organización.";
+}
+
+function buildIrrMessage(filters: { asn?: string; resource?: string }) {
+  if (filters.asn) {
+    return `Encontré los objetos IRR asociados al ASN ${normalizeAsn(filters.asn)}.`;
+  }
+
+  if (filters.resource) {
+    return "Encontré los objetos IRR asociados al AS-SET solicitado.";
+  }
+
+  return "Encontré los AS-SETs disponibles en IRR.";
 }
 
 function getSubassignmentResourceType(
@@ -466,6 +603,22 @@ function collectPrefixCandidates(value: unknown): string[] {
 
     return [];
   });
+}
+
+function collectPrimitiveCandidates(value: unknown): string[] {
+  if (typeof value === "string" || typeof value === "number") {
+    return [String(value)];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectPrimitiveCandidates(item));
+  }
+
+  if (isRecord(value)) {
+    return Object.values(value).flatMap((item) => collectPrimitiveCandidates(item));
+  }
+
+  return [];
 }
 
 function isAsnLikeKey(key: string) {

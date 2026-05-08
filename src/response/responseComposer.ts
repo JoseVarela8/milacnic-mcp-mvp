@@ -25,10 +25,29 @@ function summarizeForUser(toolName: string, data: unknown) {
       : `Resumen: encontré ${data.length} ROA(s).`;
   }
 
-  if (toolName === "get_organization_contacts" && Array.isArray(data)) {
-    return data.length === 0
+  if (toolName === "get_organization_contacts" && isRecord(data)) {
+    const contacts = isRecord(data.contacts) ? data.contacts : {};
+    const count = Object.values(contacts).filter(Boolean).length;
+
+    return count === 0
       ? "No encontré contactos asociados en la respuesta de Registro."
-      : `Resumen: encontré ${data.length} contacto(s).`;
+      : `Resumen: encontré ${count} contacto(s).`;
+  }
+
+  if (toolName === "get_geofeeds_by_org" && Array.isArray(data)) {
+    return data.length === 0
+      ? "No encontré Geofeeds para esa consulta."
+      : `Resumen: encontré ${data.length} Geofeed(s).`;
+  }
+
+  if (toolName === "get_irr_assets" && Array.isArray(data)) {
+    return data.length === 0
+      ? "No encontré objetos IRR para esa consulta."
+      : `Resumen: encontré ${data.length} objeto(s) IRR.`;
+  }
+
+  if (toolName === "get_rate_limits" && isRecord(data)) {
+    return "Estos límites sirven para diagnosticar consumo y posibles bloqueos de API.";
   }
 
   if (toolName === "get_subassignments_by_org" && isRecord(data)) {
