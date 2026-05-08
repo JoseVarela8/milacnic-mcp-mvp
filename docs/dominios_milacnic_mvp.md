@@ -153,6 +153,7 @@ Comportamiento:
 
 - El MCP consulta los recursos de la organizacion con la tool existente.
 - Para cada bloque IP revisado, consulta el detalle del recurso y lee `ipnetwork_child`.
+- Para cada bloque hijo detectado, consulta su detalle para obtener `assignedOrgId`.
 - `resourceType=ipv4` revisa solo bloques IPv4.
 - `resourceType=ipv6` revisa solo bloques IPv6.
 - `subassignmentView=with_subassignments` devuelve recursos con subasignaciones.
@@ -160,6 +161,10 @@ Comportamiento:
 - `subassignmentView=coverage` devuelve todos los recursos revisados con resumen de cobertura.
 - No se agregan operaciones de escritura.
 - No cambia la API de Registro.
+
+Evidencia de API:
+
+- `docs/relevamiento_subasignaciones_api_registro.md`
 
 Ejemplos:
 
@@ -175,3 +180,204 @@ Pruebas:
 
 - `diagnostica subasignaciones IPv4 sin ejecutar escrituras`
 - `usa el recurso previo para consultar subasignaciones`
+
+## Organizaciones y contactos
+
+Estado: implementado.
+
+Intenciones LLM:
+
+```text
+get_organization
+get_organization_contacts
+get_contact
+```
+
+Entidades soportadas:
+
+```json
+{
+  "orgId": "UY-LACN-LACNIC",
+  "contactId": "ABC123",
+  "contactRole": "all | admin | billing | membership"
+}
+```
+
+Tools MCP:
+
+```text
+getOrganizationTool
+getOrganizationContactsTool
+getContactTool
+```
+
+Comportamiento:
+
+- El MCP consulta datos de una organizacion por OrgID.
+- El MCP consulta contactos asociados a la organizacion.
+- Si el usuario pide un rol especifico, consulta solo ese contacto.
+- Roles soportados: administrativo, facturacion/cobranza y membresia.
+- No se agregan operaciones de escritura.
+
+Ejemplos:
+
+```text
+Mostrame informacion de UY-LACN-LACNIC
+Mostrame los contactos de UY-LACN-LACNIC
+Mostrame el contacto administrativo de UY-LACN-LACNIC
+```
+
+Pruebas:
+
+- `consulta por OrgID ejecuta una tool de lectura y devuelve datos`
+- `filtra contactos de organización por rol administrativo`
+
+## Geofeeds
+
+Estado: implementado.
+
+Intencion LLM:
+
+```text
+get_geofeeds_by_org
+```
+
+Entidades soportadas:
+
+```json
+{
+  "orgId": "UY-LACN-LACNIC",
+  "resource": "200.3.12.0/24",
+  "resourceType": "ipv4 | ipv6"
+}
+```
+
+Tool MCP:
+
+```text
+getGeofeedsByOrganizationTool
+```
+
+Comportamiento:
+
+- El MCP consulta Geofeeds por organizacion con la tool existente.
+- El filtro por recurso se aplica localmente cuando la respuesta incluye `ip`, `cidr`, `prefix` o `resource`.
+- El filtro IPv4/IPv6 se aplica localmente.
+- No se agregan operaciones de escritura.
+
+Ejemplos:
+
+```text
+Mostrame Geofeeds de UY-LACN-LACNIC
+Mostrame Geofeeds IPv6 de UY-LACN-LACNIC
+Geofeeds del recurso 200.3.12.0/24
+```
+
+Pruebas:
+
+- `filtra Geofeeds por IPv6 sin cambiar la llamada a Registro`
+
+## IRR
+
+Estado: implementado.
+
+Intencion LLM:
+
+```text
+get_irr_assets
+```
+
+Entidades soportadas:
+
+```json
+{
+  "asn": "28001",
+  "resource": "AS-LACNIC"
+}
+```
+
+Tool MCP:
+
+```text
+getIrrAssetsTool
+```
+
+Comportamiento:
+
+- El MCP consulta los objetos IRR disponibles con la tool existente.
+- El filtro por ASN o AS-SET se aplica localmente.
+- No se agregan operaciones de escritura.
+
+Ejemplos:
+
+```text
+Mostrame los AS-SETs de IRR
+Mostrame AS-SET de AS28001 en IRR
+```
+
+Pruebas:
+
+- `filtra objetos IRR por ASN localmente`
+
+## Rate limits
+
+Estado: implementado.
+
+Intencion LLM:
+
+```text
+get_rate_limits
+```
+
+Tool MCP:
+
+```text
+getRateLimitsTool
+```
+
+Comportamiento:
+
+- El MCP interpreta `rate limits`, limites, cuotas, cupos o throttling como consulta de limites de API.
+- No se agregan operaciones de escritura.
+
+Ejemplos:
+
+```text
+Mostrame los rate limits
+Mostrame las cuotas de API disponibles
+```
+
+Pruebas:
+
+- `interpreta cuotas de API como rate limits`
+
+## Escrituras fuera del MVP
+
+Estado: bloqueado.
+
+Intencion LLM:
+
+```text
+unsupported_write_action
+```
+
+Comportamiento:
+
+- Crear, registrar, modificar, actualizar, cambiar, eliminar, borrar, publicar, activar, desactivar, revocar, delegar, transferir o configurar datos se bloquea antes de llamar a Registro.
+- La respuesta usa estado `ACTION_BLOCKED`.
+- No se ejecutan `POST`, `PUT`, `PATCH` ni `DELETE` hacia Registro API, salvo OAuth en `auth.ts`.
+
+Ejemplos:
+
+```text
+Crear una subasignacion
+Actualizar el ROA del ASN 28001
+Eliminar un Geofeed
+Configurar DNS reverso
+```
+
+Pruebas:
+
+- `acciones de escritura quedan bloqueadas antes de llamar a Registro`
+- `acciones de actualización quedan bloqueadas antes de llamar a Registro`
+- `no existen operaciones de escritura hacia Registro API salvo OAuth`

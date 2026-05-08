@@ -247,7 +247,32 @@ test("usa el recurso previo para consultar subasignaciones", async () => {
         data: {
           address: "200.3.12.0",
           prefixLength: 24,
-          ipnetwork_child: [{ prefix: "200.3.12.128/25" }]
+          ipnetwork_child: [
+            {
+              ipnetwork_range: {
+                start_address: "200.3.12.128",
+                end_address: "200.3.12.255",
+                prefixLength: 25,
+                version: "v4"
+              }
+            }
+          ]
+        }
+      };
+    }
+
+    if (url === "/ips/200.3.12.128/25") {
+      return {
+        data: {
+          orgId: "UY-CLIENTE-LACNIC",
+          allocationType: "assignment",
+          asn: 0,
+          ipnetwork_parent: {
+            ipnetwork_range: {
+              start_address: "200.3.12.0",
+              prefixLength: 24
+            }
+          }
         }
       };
     }
@@ -270,9 +295,163 @@ test("usa el recurso previo para consultar subasignaciones", async () => {
   assert.equal(secondResponse.status, "COMPLETED");
   assert.deepEqual(
     calls.map((call) => call.url),
-    ["/ips/200.3.12.0/24", "/ips/200.3.12.0/24"]
+    [
+      "/ips/200.3.12.0/24",
+      "/ips/200.3.12.0/24",
+      "/ips/200.3.12.128/25"
+    ]
   );
-  assert.deepEqual(secondResponse.data, [{ prefix: "200.3.12.128/25" }]);
+  assert.deepEqual(secondResponse.data, [
+    {
+      ipnetwork_range: {
+        start_address: "200.3.12.128",
+        end_address: "200.3.12.255",
+        prefixLength: 25,
+        version: "v4"
+      },
+      cidr: "200.3.12.128/25",
+      assignedOrgId: "UY-CLIENTE-LACNIC",
+      allocationType: "assignment",
+      asn: 0,
+      detail: {
+        abuseContact: undefined,
+        techContact: undefined,
+        ipnetwork_parent: {
+          ipnetwork_range: {
+            start_address: "200.3.12.0",
+            prefixLength: 24
+          }
+        }
+      }
+    }
+  ]);
+});
+
+test("filtra contactos de organización por rol administrativo", async () => {
+  const calls: RegistroGetCall[] = [];
+
+  (registroApiClient as any).get = async (url: string, config: any) => {
+    calls.push({ url, config });
+
+    if (url === "/entity/organizations/UY-LACN-LACNIC") {
+      return {
+        data: {
+          admin_contact: "ADM123",
+          cob_contact: "COB123",
+          mem_contact: "MEM123"
+        }
+      };
+    }
+
+    if (url === "/entity/users/ADM123") {
+      return {
+        data: {
+          id: "ADM123",
+          name: "Admin Contact"
+        }
+      };
+    }
+
+    return { data: {} };
+  };
+
+  const response = await handleChatMessage({
+    message: "Mostrame el contacto administrativo de UY-LACN-LACNIC",
+    locale: "es"
+  });
+
+  assert.equal(response.status, "COMPLETED");
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    ["/entity/organizations/UY-LACN-LACNIC", "/entity/users/ADM123"]
+  );
+  assert.deepEqual(response.data, {
+    orgId: "UY-LACN-LACNIC",
+    role: "admin",
+    contacts: {
+      admin: {
+        id: "ADM123",
+        name: "Admin Contact"
+      },
+      billing: undefined,
+      membership: undefined
+    }
+  });
+});
+
+test("filtra Geofeeds por IPv6 sin cambiar la llamada a Registro", async () => {
+  const calls: RegistroGetCall[] = [];
+
+  (registroApiClient as any).get = async (url: string, config: any) => {
+    calls.push({ url, config });
+
+    return {
+      data: [
+        { ip: "200.3.12.0/24", country: "UY" },
+        { cidr: "2801:13c:1000::/48", country: "UY" }
+      ]
+    };
+  };
+
+  const response = await handleChatMessage({
+    message: "Mostrame Geofeeds IPv6 de UY-LACN-LACNIC",
+    locale: "es"
+  });
+
+  assert.equal(response.status, "COMPLETED");
+  assert.deepEqual(calls.map((call) => call.url), ["/geofeeds"]);
+  assert.deepEqual(response.data, [
+    { cidr: "2801:13c:1000::/48", country: "UY" }
+  ]);
+});
+
+test("filtra objetos IRR por ASN localmente", async () => {
+  const calls: RegistroGetCall[] = [];
+
+  (registroApiClient as any).get = async (url: string, config: any) => {
+    calls.push({ url, config });
+
+    return {
+      data: [
+        { name: "AS-LACNIC", members: ["AS28001", "AS28002"] },
+        { name: "AS-OTHER", members: ["AS65000"] }
+      ]
+    };
+  };
+
+  const response = await handleChatMessage({
+    message: "Mostrame AS-SET de AS28001 en IRR",
+    locale: "es"
+  });
+
+  assert.equal(response.status, "COMPLETED");
+  assert.deepEqual(calls.map((call) => call.url), ["/irr/assets"]);
+  assert.deepEqual(response.data, [
+    { name: "AS-LACNIC", members: ["AS28001", "AS28002"] }
+  ]);
+});
+
+test("interpreta cuotas de API como rate limits", async () => {
+  const calls: RegistroGetCall[] = [];
+
+  (registroApiClient as any).get = async (url: string, config: any) => {
+    calls.push({ url, config });
+
+    return {
+      data: {
+        remaining: 100,
+        limit: 120
+      }
+    };
+  };
+
+  const response = await handleChatMessage({
+    message: "Mostrame las cuotas de API disponibles",
+    locale: "es"
+  });
+
+  assert.equal(response.status, "COMPLETED");
+  assert.deepEqual(calls.map((call) => call.url), ["/ratelimits"]);
 });
 
 test("error 404 de Registro se transforma en respuesta controlada", async () => {
@@ -309,6 +488,23 @@ test("acciones de escritura quedan bloqueadas antes de llamar a Registro", async
 
   const response = await handleChatMessage({
     message: "Crear una subasignación para UY-LACN-LACNIC",
+    locale: "es"
+  });
+
+  assert.equal(response.status, "ACTION_BLOCKED");
+  assert.equal(registroWasCalled, false);
+});
+
+test("acciones de actualización quedan bloqueadas antes de llamar a Registro", async () => {
+  let registroWasCalled = false;
+
+  (registroApiClient as any).get = async () => {
+    registroWasCalled = true;
+    return { data: {} };
+  };
+
+  const response = await handleChatMessage({
+    message: "Actualizar el ROA del ASN 28001 para 200.3.12.0/24",
     locale: "es"
   });
 
